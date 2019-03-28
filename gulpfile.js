@@ -1,138 +1,121 @@
 'use strict';
 
-// переменные в которые мы запрашиваем модули
-var gulp = require('gulp');
-var sass = require('gulp-sass');
-var concat = require('gulp-concat');
-var rigger = require('gulp-rigger');
-var autoprefixer = require('gulp-autoprefixer');
-var browserSync = require('browser-sync');
-var cssnano = require('gulp-cssnano');
-var del = require('del');
-var uglify = require('gulp-uglify');
-var babel = require('gulp-babel');
-var imagemin = require('gulp-imagemin');
-var pngquant = require('imagemin-pngquant');
+const { src, dest, series, parallel, watch } = require('gulp');
+const sass = require('gulp-sass');
+const postcss = require('gulp-postcss');
+const autoprefixer = require('autoprefixer');
+const csso = require('gulp-csso');
+const gcmq = require('gulp-group-css-media-queries');
+const del = require('del');
+const htmlmin = require('gulp-htmlmin');
+const imagemin = require('gulp-imagemin');
+const svgstore = require('gulp-svgstore');
+const plumber = require('gulp-plumber');
+const rigger = require('gulp-rigger');
+const stylelint = require('gulp-stylelint');
+const babel = require('gulp-babel');
+const uglify = require('gulp-uglify');
+const concat = require('gulp-concat');
+const rename = require('gulp-rename');
+const server = require('browser-sync').create();
 
-// обьект путей нашего проекта
-var paths = {
-  src: {
-    html: 'src/*.html',
-    css: 'src/sass/style.scss',
-    sass: 'src/sass/**/*.scss',
-    js: 'src/js/**/*.js',
-    fonts: 'src/fonts/**/*.*',
-    img: 'src/img/**/*.+(png|jpg|gif|svg)'
-  },
-  dist: {
-    html: 'dist',
-    css: 'dist/css',
-    js: 'dist/js',
-    fonts: 'dist/fonts',
-    img: 'dist/img',
-  },
-  watch: {
-    html: 'src/**/*.html'
-  },
-  clean: './dist'
-};
-
-// конфигурация сервера
-var serverConfig = {
-  server: {
-    baseDir: './dist'
-  },
-  host: 'localhost',
-  port: 9000,
-  logPrefix: 'NASA',
-  notify: false
-};
-
-// собираем html используя rigger
-gulp.task('bundleHtml', function() {
-  return gulp.src(paths.src.html)
+function html() {
+  return src('src/*.html')
     .pipe(rigger())
-    .pipe(gulp.dest(paths.dist.html))
-    .pipe(browserSync.reload({
-      stream: true
-    }));
-});
+    .pipe(htmlmin({ collapseWhitespace: true }))
+    .pipe(dest('build'));
+}
 
-// собираем sass
-gulp.task('bundleCss', function() {
-  return gulp.src(paths.src.css)
-    .pipe(sass().on('error', sass.logError))
-    .pipe(autoprefixer({
-      browsers: ['last 2 versions'],
-      cascade: false
-    }))
-    // .pipe(cssnano())
-    .pipe(gulp.dest(paths.dist.css))
-    .pipe(browserSync.reload({
-      stream: true
-    }));
-});
+function styles() {
+  return src('src/sass/styles.scss')
+    .pipe(plumber())
+    .pipe(
+      stylelint({
+        reporters: [{ formatter: 'string', console: true }],
+      }),
+    )
+    .pipe(sass())
+    .pipe(postcss([autoprefixer()]))
+    .pipe(gcmq())
+    .pipe(dest('build/css'))
+    .pipe(csso())
+    .pipe(rename('styles.min.css'))
+    .pipe(dest('build/css'))
+    .pipe(server.stream());
+}
 
-// собирем js
-gulp.task('bundleJs', function() {
-  return gulp.src(paths.src.js)
+function scripts() {
+  return src('src/js/**/*.js')
+    .pipe(plumber())
+    .pipe(babel())
     .pipe(concat('scripts.js'))
-    // .pipe(babel({
-    //   presets: [['env', {
-    //     "targets": {
-    //       "browsers": ["last 2 versions", "safari >= 7"]
-    //     }
-    //   }]]
-    // }))
-    // .pipe(uglify())
-    .pipe(gulp.dest(paths.dist.js))
-    .pipe(browserSync.reload({
-      stream: true
-    }));
-});
+    .pipe(dest('build/js'))
+    .pipe(uglify())
+    .pipe(rename('scripts.min.js'))
+    .pipe(dest('build/js'));
+}
 
-// копируем файлы фонтов в dist
-gulp.task('bundleFonts', function() {
-  return gulp.src(paths.src.fonts)
-    .pipe(gulp.dest(paths.dist.fonts));
-});
+function sprite() {
+  return src('src/images/icons/icon-*.svg')
+    .pipe(svgstore({ inlineSvg: true }))
+    .pipe(rename('sprite.svg'))
+    .pipe(dest('build/images'));
+}
 
-// собираем картинки
-gulp.task('bundleImg', function() {
-  return gulp.src(paths.src.img)
-    .pipe(imagemin({
-      progressive: true,
-      svgoPlugins: [{
-        removeViewBox: false
-      }],
-      use: [pngquant()],
-      interlaced: true
-    }))
-    .pipe(gulp.dest(paths.dist.img))
-    .pipe(browserSync.reload({
-      stream: true
-    }));
-});
+function images() {
+  return src(['src/images/**/*.{png,jpg,jpeg,svg}', '!src/images/icons/**/*'])
+    .pipe(
+      imagemin([
+        imagemin.jpegtran({ progressive: true }),
+        imagemin.optipng({ optimizationLevel: 3 }),
+        imagemin.svgo({
+          plugins: [{ removeViewBox: false }, { cleanupIDs: false }],
+        }),
+      ]),
+    )
+    .pipe(dest('build/images'));
+}
 
-// поднимаем browser-sync веб сервер
-gulp.task('webServer', function() {
-  browserSync(serverConfig);
-});
+function fonts() {
+  return src('src/fonts/**/*').pipe(dest('build/fonts'));
+}
 
-// смотрим за изменениями в файлах
-gulp.task('watch', function() {
-  gulp.watch(paths.src.sass, ['bundleCss']);
-  gulp.watch(paths.watch.html, ['bundleHtml']);
-  gulp.watch(paths.src.js, ['bundleJs']);
-  gulp.watch(paths.src.fonts, ['bundleFonts']);
-  gulp.watch(paths.src.img, ['bundleImg']);
-});
+function watcher(done) {
+  watch('src/**/*.html').on('change', series(html, server.reload));
+  watch('src/sass/**/*.scss').on('change', series(styles, server.reload));
+  watch('src/js/**/*.js').on('change', series(scripts, server.reload));
 
-// Cleaning build dir
-gulp.task('clean:dist', function() {
-  return del.sync(paths.clean);
-});
+  done();
+}
 
+function serve() {
+  return server.init({
+    server: 'build',
+    notify: false,
+    open: false,
+    cors: true,
+    ui: false,
+    logPrefix: 'DevServer',
+    host: 'localhost',
+    port: 8080,
+  });
+}
 
-// таск который запускается по npm run start из package.json, включает в себя все таски в определенном порядке
-gulp.task('start', ['clean:dist', 'bundleHtml', 'bundleCss', 'bundleJs', 'bundleFonts', 'bundleImg', 'webServer', 'watch']);
+function clean() {
+  return del('./build');
+}
+
+function prepare() {
+  return del(['**/.gitkeep', 'README.md']);
+}
+
+const build = series(
+  clean,
+  parallel(sprite, images, fonts, html, styles, scripts),
+);
+
+const start = series(build, watcher, serve);
+
+exports.prepare = prepare;
+exports.build = build;
+exports.start = start;
