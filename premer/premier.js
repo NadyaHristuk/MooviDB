@@ -116,7 +116,7 @@ fetch(apiLatest)
    .then(data => {
       for (let el of data.results) {
          categoriasLatest.innerHTML += `
-               <div class="pictureCard js-favorite" id=${el.id}">
+               <div class="pictureCard js-favorite" id='${el.id}'>
                <div class="pictureCover"></div>
                <img width="100%" src='https://image.tmdb.org/t/p/w185/${el.poster_path}'></img>
                <svg class="iconStarCard iconStarTrue js-open_modal" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1"  x="0px" y="0px" viewBox="0 0 512 512" style="enable-background:new 0 0 512 512;" xml:space="preserve"  width="20px" height="20px" ><g><g>
